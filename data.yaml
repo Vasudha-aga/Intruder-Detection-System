@@ -1,0 +1,16 @@
+# YOLOv8 Weapon Detection Dataset Configuration
+# For folder structure: data/train/, data/valid/, data/test/
+
+# Dataset root - IMPORTANT: Point to 'data' folder
+path: data
+
+# Training, validation and test sets (relative to 'data' folder)
+train: train/images
+val: valid/images
+test: test/images
+
+# Number of classes
+nc: 1
+
+# Class names
+names: ['weapon']
