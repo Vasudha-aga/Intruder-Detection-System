@@ -191,7 +191,7 @@ def run_detection():
             frame = cv2.imread(img_path)
             if frame is None:
                 continue
-            frame = cv2.resize(frame, (320, 240))
+            frame = cv2.resize(frame, (256, 192))
             time.sleep(0.03)  # Simulate fast ~30 FPS stream rate in demo mode
             ret = True
         else:
@@ -458,11 +458,11 @@ def detect_frame():
             return jsonify({'status': 'error', 'message': 'Invalid image'}), 400
             
         # Resize for faster CPU inference
-        frame = cv2.resize(frame, (320, 240))
+        frame = cv2.resize(frame, (256, 192))
         
         # Run YOLO inference
-        person_results = person_model(frame, conf=0.5, verbose=False)
-        weapon_results = weapon_model(frame, conf=0.5, verbose=False)
+        person_results = person_model(frame, conf=0.45, verbose=False)
+        weapon_results = weapon_model(frame, conf=0.45, verbose=False)
         
         person_count = 0
         weapon_count = 0
@@ -503,13 +503,13 @@ def detect_frame():
             'threat_level': threat_level,
             'person_count': person_count,
             'weapon_count': weapon_count,
-            'fps': 20,
+            'fps': 35,
             'timestamp': time.strftime('%H:%M:%S'),
             'alert': play_siren
         }
         
         # Encode annotated frame back to base64 JPEG
-        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 55])
         encoded_img = base64.b64encode(buffer).decode('utf-8')
         
         return jsonify({
