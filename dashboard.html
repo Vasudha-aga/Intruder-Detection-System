@@ -666,7 +666,7 @@
                     videoStream.style.display = 'block';
                     videoPlaceholder.style.display = 'none';
                     
-                    webcamInterval = setInterval(sendWebcamFrame, 60);
+                    webcamInterval = setInterval(sendWebcamFrame, 30);
                     updateStatus();
                     console.log('✅ Real-time browser webcam detection started!');
                 })
@@ -682,11 +682,11 @@
             isProcessingFrame = true;
             
             const context = webcamCanvas.getContext('2d');
-            webcamCanvas.width = 480;
-            webcamCanvas.height = 360;
+            webcamCanvas.width = 320;
+            webcamCanvas.height = 240;
             context.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
             
-            const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.65);
+            const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.55);
             
             fetch('/detect_frame', {
                 method: 'POST',
