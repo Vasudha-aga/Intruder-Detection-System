@@ -182,14 +182,16 @@ cython_debug/
 
 # Dataset and Training Outputs (Roboflow images, labels, and YOLO runs)
 data/train/
-data/test/
 data/valid/
 runs/
 weapon_alerts/
 
 # Model Weights and Media
 *.pt
+!best.pt
+!yolov8*.pt
 *.wav
+
 
 # IDE and Generated Plots
 .vscode/
