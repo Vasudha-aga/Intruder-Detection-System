@@ -191,8 +191,8 @@ def run_detection():
             frame = cv2.imread(img_path)
             if frame is None:
                 continue
-            frame = cv2.resize(frame, (640, 480))
-            time.sleep(0.06)  # Simulate ~15-20 FPS stream rate in demo mode
+            frame = cv2.resize(frame, (480, 360))
+            time.sleep(0.03)  # Simulate fast ~30 FPS stream rate in demo mode
             ret = True
         else:
             ret, frame = camera.read()
@@ -457,8 +457,8 @@ def detect_frame():
         if frame is None:
             return jsonify({'status': 'error', 'message': 'Invalid image'}), 400
             
-        # Resize for faster inference
-        frame = cv2.resize(frame, (640, 480))
+        # Resize for faster CPU inference
+        frame = cv2.resize(frame, (480, 360))
         
         # Run YOLO inference
         person_results = person_model(frame, conf=0.5, verbose=False)

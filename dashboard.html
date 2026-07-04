@@ -666,7 +666,7 @@
                     videoStream.style.display = 'block';
                     videoPlaceholder.style.display = 'none';
                     
-                    webcamInterval = setInterval(sendWebcamFrame, 120);
+                    webcamInterval = setInterval(sendWebcamFrame, 60);
                     updateStatus();
                     console.log('✅ Real-time browser webcam detection started!');
                 })
@@ -676,15 +676,17 @@
                 });
         }
         
+        let isProcessingFrame = false;
         function sendWebcamFrame() {
-            if (!systemRunning || !webcamStream) return;
+            if (!systemRunning || !webcamStream || isProcessingFrame) return;
+            isProcessingFrame = true;
             
             const context = webcamCanvas.getContext('2d');
-            webcamCanvas.width = webcamVideo.videoWidth || 640;
-            webcamCanvas.height = webcamVideo.videoHeight || 480;
+            webcamCanvas.width = 480;
+            webcamCanvas.height = 360;
             context.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
             
-            const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.8);
+            const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.65);
             
             fetch('/detect_frame', {
                 method: 'POST',
@@ -710,7 +712,10 @@
                     }
                 }
             })
-            .catch(e => console.error('Frame inference error:', e));
+            .catch(e => console.error('Frame inference error:', e))
+            .finally(() => {
+                isProcessingFrame = false;
+            });
         }
         
         let lastSirenTime = 0;
