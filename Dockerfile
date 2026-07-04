@@ -9,10 +9,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Install Linux system dependencies required for OpenCV (libGL) and audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
+    libsm6 \
+    libxext6 \
     libasound2-dev \
     && rm -rf /var/lib/apt/lists/*
+
 
 # Set working directory inside container
 WORKDIR /app
