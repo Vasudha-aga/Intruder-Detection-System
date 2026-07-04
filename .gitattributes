@@ -1,6 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Track binary model weights and image/media assets with Git LFS / Hugging Face Xet
 *.pt filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+*.bin filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
 *.jpeg filter=lfs diff=lfs merge=lfs -text
 *.png filter=lfs diff=lfs merge=lfs -text
