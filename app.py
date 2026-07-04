@@ -349,7 +349,17 @@ def run_detection():
         pass
     with frame_lock:
         latest_frame = None
+    
+    # Cleanly reset status on exit
+    current_status.update({
+        'threat_level': 'SAFE',
+        'person_count': 0,
+        'weapon_count': 0,
+        'fps': 0,
+        'alert': False
+    })
     print("\n📹 Surveillance stream closed")
+
 
 @app.route('/')
 def index():
@@ -412,6 +422,22 @@ def video_feed():
     """Video streaming route for web dashboard"""
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/get_latest_frame')
+def get_latest_frame():
+    """Return latest frame as JPEG for cloud proxies that block multipart streaming"""
+    global latest_frame, detection_active
+    if not detection_active or latest_frame is None:
+        standby = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.putText(standby, "SYSTEM WAITING FOR LIVE FRAMES...", (40, 240),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (127, 140, 141), 2)
+        ret, buffer = cv2.imencode('.jpg', standby)
+        return Response(buffer.tobytes(), mimetype='image/jpeg')
+    else:
+        with frame_lock:
+            ret, buffer = cv2.imencode('.jpg', latest_frame)
+            return Response(buffer.tobytes(), mimetype='image/jpeg')
+
 
 @app.route('/detect_frame', methods=['POST'])
 def detect_frame():
@@ -499,9 +525,8 @@ def detect_frame():
 
 @app.route('/stop_detection', methods=['POST'])
 def stop_detection():
-
     """Stop detection system"""
-    global detection_active, camera, latest_frame
+    global detection_active, camera, latest_frame, current_status
     
     detection_active = False
     
@@ -520,6 +545,16 @@ def stop_detection():
         
     with frame_lock:
         latest_frame = None
+        
+    # Completely reset status when stopped
+    current_status = {
+        'threat_level': 'SAFE',
+        'person_count': 0,
+        'weapon_count': 0,
+        'fps': 0,
+        'timestamp': time.strftime('%H:%M:%S'),
+        'alert': False
+    }
     
     print("\n⏹️ Detection system stopped from dashboard")
     
@@ -527,6 +562,7 @@ def stop_detection():
         'status': 'success',
         'message': 'Detection system stopped successfully'
     })
+
 
 @app.route('/status')
 def get_status():

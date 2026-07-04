@@ -570,9 +570,16 @@
                     videoPreview.classList.add('active');
                     const videoStream = document.getElementById('videoStream');
                     const videoPlaceholder = document.getElementById('videoPlaceholder');
-                    videoStream.src = '/video_feed?' + new Date().getTime();
+                    videoStream.src = '/get_latest_frame?' + new Date().getTime();
                     videoStream.style.display = 'block';
                     videoPlaceholder.style.display = 'none';
+                    
+                    if (demoInterval) clearInterval(demoInterval);
+                    demoInterval = setInterval(() => {
+                        if (systemRunning && videoStream.style.display !== 'none') {
+                            videoStream.src = '/get_latest_frame?' + new Date().getTime();
+                        }
+                    }, 120);
                     
                     // Start polling for status updates
                     updateStatus();
@@ -594,27 +601,30 @@
             fetch('/status')
                 .then(response => response.json())
                 .then(data => {
+                    if (!systemRunning) return;
                     if (data.is_demo_mode) {
                         cameraStatus.innerHTML = '🟢 Demo Simulation Mode';
                     }
-                    // Update threat status
-                    if (data.threat_level === 'CRITICAL') {
+                    // Update threat status and trigger audio siren in browser
+                    if (data.threat_level === 'CRITICAL' || (data.alert && data.weapon_count > 0)) {
                         threatStatus.innerHTML = `🚨 CRITICAL: ${data.weapon_count} WEAPON(S)`;
                         threatStatus.className = 'status-indicator status-critical';
-                    } else if (data.threat_level === 'SUSPICIOUS') {
+                        playBrowserSiren();
+                    } else if (data.threat_level === 'SUSPICIOUS' || (data.alert && data.person_count > 0)) {
                         threatStatus.innerHTML = `⚠️ SUSPICIOUS: ${data.person_count} PERSON(S)`;
                         threatStatus.className = 'status-indicator status-suspicious';
+                        playBrowserSiren();
                     } else {
                         threatStatus.innerHTML = '✅ AREA SECURE';
                         threatStatus.className = 'status-indicator status-safe';
                     }
                     
                     // Continue polling
-                    setTimeout(updateStatus, 1000);
+                    setTimeout(updateStatus, 800);
                 })
                 .catch(error => {
                     console.error('Status update error:', error);
-                    setTimeout(updateStatus, 2000);
+                    if (systemRunning) setTimeout(updateStatus, 2000);
                 });
         }
 
@@ -623,6 +633,7 @@
         const webcamCanvas = document.getElementById('webcamCanvas');
         let webcamStream = null;
         let webcamInterval = null;
+        let demoInterval = null;
         
         if (startWebcamBtn) {
             startWebcamBtn.addEventListener('click', startBrowserWebcam);
@@ -702,8 +713,14 @@
             .catch(e => console.error('Frame inference error:', e));
         }
         
+        let lastSirenTime = 0;
         function playBrowserSiren() {
-            new Audio('/alert.wav').play().catch(() => {});
+            const now = Date.now();
+            if (now - lastSirenTime > 1800) {
+                lastSirenTime = now;
+                const audio = new Audio('/alert.wav');
+                audio.play().catch(() => {});
+            }
         }
 
         function stopDetection() {
@@ -712,6 +729,10 @@
                 .finally(() => {
                     systemRunning = false;
                     
+                    if (demoInterval) {
+                        clearInterval(demoInterval);
+                        demoInterval = null;
+                    }
                     if (webcamInterval) {
                         clearInterval(webcamInterval);
                         webcamInterval = null;
