@@ -179,3 +179,19 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Dataset and Training Outputs (Roboflow images, labels, and YOLO runs)
+data/train/
+data/test/
+data/valid/
+runs/
+weapon_alerts/
+
+# Model Weights and Media
+*.pt
+*.wav
+
+# IDE and Generated Plots
+.vscode/
+confusion_matrix.png
+
