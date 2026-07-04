@@ -3,8 +3,9 @@ Integrated Flask Backend with Audio Alerts
 Complete working system with sound!
 """
 
-from flask import Flask, render_template, Response, jsonify
+from flask import Flask, render_template, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
+
 import cv2
 from ultralytics import YOLO
 import threading
@@ -14,6 +15,8 @@ import os
 import numpy as np
 import wave
 import glob
+import base64
+
 
 app = Flask(__name__, template_folder='.', static_folder='.')
 CORS(app)
@@ -353,6 +356,12 @@ def index():
     """Serve the dashboard"""
     return render_template('dashboard.html')
 
+@app.route('/alert.wav')
+def serve_alert_audio():
+    """Serve siren audio file to web dashboard"""
+    return send_from_directory('.', 'alert.wav')
+
+
 @app.route('/start_detection', methods=['POST'])
 def start_detection():
     """Start detection system"""
@@ -404,8 +413,93 @@ def video_feed():
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/detect_frame', methods=['POST'])
+def detect_frame():
+    """Real-time inference endpoint for browser webcam streaming in cloud deployments"""
+    global current_status, person_model, weapon_model
+    
+    try:
+        data = request.json
+        if not data or 'image' not in data:
+            return jsonify({'status': 'error', 'message': 'No image provided'}), 400
+            
+        # Decode base64 image from browser webcam
+        img_data = base64.b64decode(data['image'].split(',')[1] if ',' in data['image'] else data['image'])
+        np_arr = np.frombuffer(img_data, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return jsonify({'status': 'error', 'message': 'Invalid image'}), 400
+            
+        # Resize for faster inference
+        frame = cv2.resize(frame, (640, 480))
+        
+        # Run YOLO inference
+        person_results = person_model(frame, conf=0.5, verbose=False)
+        weapon_results = weapon_model(frame, conf=0.5, verbose=False)
+        
+        person_count = 0
+        weapon_count = 0
+        
+        # Draw person boxes (green)
+        for r in person_results:
+            boxes = r.boxes
+            for box in boxes:
+                cls = int(box.cls[0])
+                if cls == 0: # Person
+                    person_count += 1
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(frame, "PERSON", (x1, max(20, y1-10)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    
+        # Draw weapon boxes (red)
+        for r in weapon_results:
+            boxes = r.boxes
+            for box in boxes:
+                weapon_count += 1
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                cv2.putText(frame, "⚠️ WEAPON DETECTED", (x1, max(20, y1-10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                
+        # Determine threat level
+        if weapon_count > 0:
+            threat_level = 'CRITICAL'
+            play_siren = True
+        elif person_count > 0:
+            threat_level = 'SUSPICIOUS'
+            play_siren = False
+        else:
+            threat_level = 'SAFE'
+            play_siren = False
+            
+        # Update status dictionary
+        current_status = {
+            'threat_level': threat_level,
+            'person_count': person_count,
+            'weapon_count': weapon_count,
+            'fps': 20,
+            'timestamp': time.strftime('%H:%M:%S'),
+            'alert': play_siren
+        }
+        
+        # Encode annotated frame back to base64 JPEG
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        encoded_img = base64.b64encode(buffer).decode('utf-8')
+        
+        return jsonify({
+            'status': 'success',
+            'threat_level': threat_level,
+            'person_count': person_count,
+            'weapon_count': weapon_count,
+            'play_siren': play_siren,
+            'annotated_image': 'data:image/jpeg;base64,' + encoded_img
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/stop_detection', methods=['POST'])
 def stop_detection():
+
     """Stop detection system"""
     global detection_active, camera, latest_frame
     

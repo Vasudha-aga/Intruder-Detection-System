@@ -384,13 +384,19 @@
                 
                 <button class="control-btn start-btn" id="startBtn">
                     <span>📹</span>
-                    <span>START DETECTION</span>
+                    <span>START SERVER STREAM / DEMO</span>
+                </button>
+                
+                <button class="control-btn start-btn" id="startWebcamBtn" style="background: linear-gradient(135deg, #2980b9, #3498db); margin-top: 10px;">
+                    <span>🌐</span>
+                    <span>START LIVE BROWSER WEBCAM</span>
                 </button>
                 
                 <button class="control-btn stop-btn" id="stopBtn">
                     <span>⏹️</span>
                     <span>STOP DETECTION</span>
                 </button>
+
                 
                 <div class="system-status-box">
                     <h3>⚙️ System Status</h3>
@@ -498,7 +504,10 @@
                     <p style="font-size: 0.8em; margin-top: 10px;">Connecting to AI surveillance stream...</p>
                 </div>
                 <img id="videoStream" src="" style="width: 100%; max-width: 800px; border-radius: 8px; border: 2px solid #556b2f; display: none; margin: 0 auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+                <video id="webcamVideo" autoplay playsinline style="display: none;"></video>
+                <canvas id="webcamCanvas" style="display: none;"></canvas>
             </div>
+
         </div>
 
         <!-- Footer -->
@@ -609,11 +618,109 @@
                 });
         }
 
+        const startWebcamBtn = document.getElementById('startWebcamBtn');
+        const webcamVideo = document.getElementById('webcamVideo');
+        const webcamCanvas = document.getElementById('webcamCanvas');
+        let webcamStream = null;
+        let webcamInterval = null;
+        
+        if (startWebcamBtn) {
+            startWebcamBtn.addEventListener('click', startBrowserWebcam);
+        }
+
+        function startBrowserWebcam() {
+            if (systemRunning) {
+                alert('⚠️ Detection is already running!');
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                .then(stream => {
+                    webcamStream = stream;
+                    webcamVideo.srcObject = stream;
+                    systemRunning = true;
+                    
+                    startBtn.style.display = 'none';
+                    startWebcamBtn.style.display = 'none';
+                    stopBtn.style.display = 'flex';
+                    
+                    cameraStatus.innerHTML = '🟢 Live Browser Webcam';
+                    cameraStatus.style.color = '#2980b9';
+                    threatStatus.innerHTML = '🔄 ANALYZING WEBCAM...';
+                    threatStatus.className = 'status-indicator running status-suspicious';
+                    
+                    videoPreview.classList.add('active');
+                    const videoStream = document.getElementById('videoStream');
+                    const videoPlaceholder = document.getElementById('videoPlaceholder');
+                    videoStream.style.display = 'block';
+                    videoPlaceholder.style.display = 'none';
+                    
+                    webcamInterval = setInterval(sendWebcamFrame, 120);
+                    updateStatus();
+                    console.log('✅ Real-time browser webcam detection started!');
+                })
+                .catch(err => {
+                    console.error('Camera access error:', err);
+                    alert('❌ Could not access your browser webcam! Please allow camera permissions in your browser.');
+                });
+        }
+        
+        function sendWebcamFrame() {
+            if (!systemRunning || !webcamStream) return;
+            
+            const context = webcamCanvas.getContext('2d');
+            webcamCanvas.width = webcamVideo.videoWidth || 640;
+            webcamCanvas.height = webcamVideo.videoHeight || 480;
+            context.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
+            
+            const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.8);
+            
+            fetch('/detect_frame', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: dataUrl })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success' && systemRunning) {
+                    const videoStream = document.getElementById('videoStream');
+                    videoStream.src = data.annotated_image;
+                    
+                    if (data.threat_level === 'CRITICAL') {
+                        threatStatus.innerHTML = `🚨 CRITICAL: ${data.weapon_count} WEAPON(S)`;
+                        threatStatus.className = 'status-indicator status-critical';
+                        playBrowserSiren();
+                    } else if (data.threat_level === 'SUSPICIOUS') {
+                        threatStatus.innerHTML = `⚠️ SUSPICIOUS: ${data.person_count} PERSON(S)`;
+                        threatStatus.className = 'status-indicator status-suspicious';
+                    } else {
+                        threatStatus.innerHTML = '✅ AREA SECURE';
+                        threatStatus.className = 'status-indicator status-safe';
+                    }
+                }
+            })
+            .catch(e => console.error('Frame inference error:', e));
+        }
+        
+        function playBrowserSiren() {
+            new Audio('/alert.wav').play().catch(() => {});
+        }
+
         function stopDetection() {
             fetch('/stop_detection', { method: 'POST' })
                 .then(response => response.json())
                 .finally(() => {
                     systemRunning = false;
+                    
+                    if (webcamInterval) {
+                        clearInterval(webcamInterval);
+                        webcamInterval = null;
+                    }
+                    if (webcamStream) {
+                        webcamStream.getTracks().forEach(track => track.stop());
+                        webcamStream = null;
+                    }
+                    if (startWebcamBtn) startWebcamBtn.style.display = 'flex';
                     
                     startBtn.style.display = 'flex';
                     stopBtn.style.display = 'none';
@@ -638,6 +745,7 @@
                     console.log('Stopping detection system...');
                 });
         }
+
 
         function simulateThreatLevels() {
             if (!systemRunning) return;
