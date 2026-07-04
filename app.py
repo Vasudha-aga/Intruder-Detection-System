@@ -15,8 +15,9 @@ import numpy as np
 import wave
 import glob
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='.', static_folder='.')
 CORS(app)
+
 
 # Global variables
 camera = None
