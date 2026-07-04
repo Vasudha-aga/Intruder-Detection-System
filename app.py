@@ -13,6 +13,7 @@ from collections import deque
 import os
 import numpy as np
 import wave
+import glob
 
 app = Flask(__name__)
 CORS(app)
@@ -22,6 +23,9 @@ camera = None
 detection_active = False
 detection_thread = None
 alert_playing = False
+frame_lock = threading.Lock()
+latest_frame = None
+is_demo_mode = False
 current_status = {
     'threat_level': 'SAFE',
     'person_count': 0,
@@ -149,27 +153,47 @@ def save_snapshot(frame, threat_type, weapon_count):
     return filename
 
 def run_detection():
-    """Main detection loop with audio alerts"""
-    global camera, detection_active, current_status, last_alert_time, last_snapshot_time
+    """Main detection loop with audio alerts and simulation mode"""
+    global camera, detection_active, current_status, last_alert_time, last_snapshot_time, latest_frame, is_demo_mode
     
     camera = cv2.VideoCapture(0)
+    demo_images = []
+    demo_idx = 0
+    is_demo_mode = False
+    
     if not camera.isOpened():
-        print("❌ Could not open camera!")
-        detection_active = False
-        return
+        print("ℹ️ No USB camera detected. Entering DEMO / SIMULATION MODE for Cloud Showcase!")
+        is_demo_mode = True
+        demo_images = sorted(glob.glob("data/test/images/*.jpg") + glob.glob("data/train/images/*.jpg") + glob.glob("data/valid/images/*.jpg"))
+        if not demo_images:
+            print("❌ No test images found for demo mode!")
+            detection_active = False
+            return
+        print(f"✅ Loaded {len(demo_images)} demo test frames for simulation!")
+    else:
+        print("\n🎥 Camera opened successfully")
     
     fps_counter = deque(maxlen=30)
     
-    print("\n🎥 Camera opened successfully")
     print("🔊 Audio alerts: ENABLED")
     print("🔄 Starting detection loop...")
     
     while detection_active:
         start_time = time.time()
-        ret, frame = camera.read()
         
-        if not ret:
-            break
+        if is_demo_mode:
+            img_path = demo_images[demo_idx]
+            demo_idx = (demo_idx + 1) % len(demo_images)
+            frame = cv2.imread(img_path)
+            if frame is None:
+                continue
+            frame = cv2.resize(frame, (640, 480))
+            time.sleep(0.06)  # Simulate ~15-20 FPS stream rate in demo mode
+            ret = True
+        else:
+            ret, frame = camera.read()
+            if not ret:
+                break
         
         # Run detections
         person_results = person_model(frame, stream=True, conf=0.5, verbose=False)
@@ -297,19 +321,31 @@ def run_detection():
                        (frame.shape[1] - 200, 65),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         
-        # Show frame
-        cv2.imshow("Army Weapon Detection System", frame)
+        # Store latest frame for video streaming
+        with frame_lock:
+            latest_frame = frame.copy()
         
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            detection_active = False
-            break
+        # Only display local desktop GUI if running locally with a display
+        if os.name == 'nt' or os.environ.get('DISPLAY'):
+            try:
+                cv2.imshow("Army Weapon Detection System", frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    detection_active = False
+                    break
+            except Exception:
+                pass
     
     # Cleanup
     if camera:
         camera.release()
         camera = None
-    cv2.destroyAllWindows()
-    print("\n📹 Camera closed")
+    try:
+        cv2.destroyAllWindows()
+    except Exception:
+        pass
+    with frame_lock:
+        latest_frame = None
+    print("\n📹 Surveillance stream closed")
 
 @app.route('/')
 def index():
@@ -341,10 +377,36 @@ def start_detection():
         'message': 'Detection system started successfully'
     })
 
+def generate_frames():
+    """Generator for streaming video frames to web dashboard"""
+    global latest_frame, detection_active
+    while True:
+        if not detection_active or latest_frame is None:
+            # Create a standby frame
+            standby = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(standby, "SYSTEM STANDBY - CLICK START DETECTION", (30, 240),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (127, 140, 141), 2)
+            ret, buffer = cv2.imencode('.jpg', standby)
+            frame_bytes = buffer.tobytes()
+        else:
+            with frame_lock:
+                ret, buffer = cv2.imencode('.jpg', latest_frame)
+                frame_bytes = buffer.tobytes()
+                
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        time.sleep(0.05)
+
+@app.route('/video_feed')
+def video_feed():
+    """Video streaming route for web dashboard"""
+    return Response(generate_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
 @app.route('/stop_detection', methods=['POST'])
 def stop_detection():
     """Stop detection system"""
-    global detection_active, camera
+    global detection_active, camera, latest_frame
     
     detection_active = False
     
@@ -356,7 +418,13 @@ def stop_detection():
         camera.release()
         camera = None
     
-    cv2.destroyAllWindows()
+    try:
+        cv2.destroyAllWindows()
+    except Exception:
+        pass
+        
+    with frame_lock:
+        latest_frame = None
     
     print("\n⏹️ Detection system stopped from dashboard")
     
@@ -370,7 +438,8 @@ def get_status():
     """Get current detection status"""
     return jsonify({
         **current_status,
-        'is_active': detection_active
+        'is_active': detection_active,
+        'is_demo_mode': is_demo_mode
     })
 
 @app.route('/system_info')
@@ -394,16 +463,17 @@ if __name__ == '__main__':
     print("="*60)
     print("\n✅ System ready!")
     print("🔊 Audio alerts: ENABLED")
+    port = int(os.environ.get('PORT', 7860 if os.environ.get('SPACE_ID') else 5000))
     print("\n🌐 Open your browser and go to:")
-    print("   👉 http://localhost:5000")
+    print(f"   👉 http://0.0.0.0:{port}")
     print("\n📋 Instructions:")
     print("   1. Open dashboard in browser")
     print("   2. Click 'START DETECTION' button")
-    print("   3. Camera window will open automatically")
-    print("   4. Audio alerts will play on detection")
-    print("   5. Press 'Q' in camera window to stop")
+    print("   3. Live stream will display directly in your browser")
+    print("   4. Audio alerts will trigger on detection")
+    print("   5. Click 'STOP DETECTION' to end session")
     print("\n⌨️  Press Ctrl+C to stop server")
     print("="*60 + "\n")
     
     # Run Flask app
-    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True)
+    app.run(debug=False, host='0.0.0.0', port=port, threaded=True)

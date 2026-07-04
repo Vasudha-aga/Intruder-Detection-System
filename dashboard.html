@@ -493,10 +493,11 @@
             <!-- Video Preview (hidden by default) -->
             <div class="video-preview" id="videoPreview">
                 <h2 style="margin-bottom: 20px; color: #ecf0f1; font-weight: 500;">📹 Live Detection Feed</h2>
-                <div class="video-placeholder">
-                    <p>🎥 Detection system is running...</p>
-                    <p style="font-size: 0.8em; margin-top: 10px;">Check the OpenCV window for live feed</p>
+                <div class="video-placeholder" id="videoPlaceholder">
+                    <p>🎥 Detection system is initializing...</p>
+                    <p style="font-size: 0.8em; margin-top: 10px;">Connecting to AI surveillance stream...</p>
                 </div>
+                <img id="videoStream" src="" style="width: 100%; max-width: 800px; border-radius: 8px; border: 2px solid #556b2f; display: none; margin: 0 auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
             </div>
         </div>
 
@@ -537,7 +538,7 @@
 
         function startDetection() {
             // Call backend API to start detection
-            fetch('http://localhost:5000/start_detection', {
+            fetch('/start_detection', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -558,16 +559,16 @@
                     threatStatus.className = 'status-indicator running status-suspicious';
                     
                     videoPreview.classList.add('active');
+                    const videoStream = document.getElementById('videoStream');
+                    const videoPlaceholder = document.getElementById('videoPlaceholder');
+                    videoStream.src = '/video_feed?' + new Date().getTime();
+                    videoStream.style.display = 'block';
+                    videoPlaceholder.style.display = 'none';
                     
                     // Start polling for status updates
                     updateStatus();
                     
                     console.log('✅ Detection system started successfully');
-                    alert('✅ Detection System Started!\n\n' +
-                          '• Camera window will open\n' +
-                          '• Real-time detection active\n' +
-                          '• Press Q in camera window to stop\n' +
-                          '• Or click STOP button in dashboard');
                 } else {
                     alert('❌ Error: ' + data.message);
                 }
@@ -581,9 +582,12 @@
         function updateStatus() {
             if (!systemRunning) return;
             
-            fetch('http://localhost:5000/status')
+            fetch('/status')
                 .then(response => response.json())
                 .then(data => {
+                    if (data.is_demo_mode) {
+                        cameraStatus.innerHTML = '🟢 Demo Simulation Mode';
+                    }
                     // Update threat status
                     if (data.threat_level === 'CRITICAL') {
                         threatStatus.innerHTML = `🚨 CRITICAL: ${data.weapon_count} WEAPON(S)`;
@@ -606,21 +610,33 @@
         }
 
         function stopDetection() {
-            systemRunning = false;
-            
-            startBtn.style.display = 'flex';
-            stopBtn.style.display = 'none';
-            
-            cameraStatus.innerHTML = '⏸️ Standby';
-            cameraStatus.style.color = '#7f8c8d';
-            
-            threatStatus.innerHTML = '✅ SYSTEM READY';
-            threatStatus.className = 'status-indicator status-safe';
-            
-            videoPreview.classList.remove('active');
-            
-            console.log('Stopping detection system...');
-            alert('⏹️ Detection System Stopped');
+            fetch('/stop_detection', { method: 'POST' })
+                .then(response => response.json())
+                .finally(() => {
+                    systemRunning = false;
+                    
+                    startBtn.style.display = 'flex';
+                    stopBtn.style.display = 'none';
+                    
+                    cameraStatus.innerHTML = '⏸️ Standby';
+                    cameraStatus.style.color = '#7f8c8d';
+                    
+                    threatStatus.innerHTML = '✅ SYSTEM READY';
+                    threatStatus.className = 'status-indicator status-safe';
+                    
+                    const videoStream = document.getElementById('videoStream');
+                    const videoPlaceholder = document.getElementById('videoPlaceholder');
+                    if (videoStream) {
+                        videoStream.src = '';
+                        videoStream.style.display = 'none';
+                    }
+                    if (videoPlaceholder) {
+                        videoPlaceholder.style.display = 'block';
+                    }
+                    videoPreview.classList.remove('active');
+                    
+                    console.log('Stopping detection system...');
+                });
         }
 
         function simulateThreatLevels() {

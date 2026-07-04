@@ -4,3 +4,7 @@ playsound==1.2.2
 numpy>=1.24.0
 pydub>=0.25.1
 torch>=2.0.0
+flask>=2.3.0
+flask-cors>=4.0.0
+gunicorn>=21.2.0
+pygame>=2.5.0
