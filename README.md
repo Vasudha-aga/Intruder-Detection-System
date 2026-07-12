@@ -1,12 +1,3 @@
----
-title: Army Weapon & Intruder Detection System
-emoji: 🛡️
-colorFrom: green
-colorTo: red
-sdk: docker
-pinned: false
----
-
 # 🛡️ Army Weapon & Intruder Detection System
 
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Live%20Demo-blue)](https://huggingface.co/spaces/Vasudha2711/Intruder-Detection-System)
